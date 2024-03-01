@@ -1,4 +1,4 @@
-"""Snapshot Version 1.4.3"""
+"""Snapshot Version 1.5.7.1"""
 # Added Errors handling.
 
 import os
@@ -11,6 +11,10 @@ _LOGGER = logging.getLogger(__name__)  # Create a logger instance
 
 
 class Snapshots:
+    """
+    Snapshots class to save the JSON data and the filtered logs to a ZIP archive.
+    We will use this class to save the JSON data and the filtered logs to a ZIP archive.
+    """
     def __init__(self, storage_path):
         self.storage_path = storage_path
 
@@ -48,14 +52,14 @@ class Snapshots:
 
         try:
             # Save JSON data to a file
-            json_file_name = os.path.join(self.storage_path, file_name + ".json")
+            json_file_name = os.path.join(self.storage_path, f"{file_name}.json")
             with open(json_file_name, "w") as json_file:
                 json.dump(json_data, json_file, indent=4)
 
             log_data = self._get_filtered_logs()
 
             # Save log data to a file
-            log_file_name = os.path.join(self.storage_path, file_name + ".log")
+            log_file_name = os.path.join(self.storage_path, f"{file_name}.log")
             with open(log_file_name, "w") as log_file:
                 log_file.write(log_data)
 
@@ -64,12 +68,13 @@ class Snapshots:
 
     def _zip_snapshot(self, file_name):
         # Create a ZIP archive
-        zip_file_name = os.path.join(self.storage_path, file_name + ".zip")
+        zip_file_name = os.path.join(self.storage_path, f"{file_name}.zip")
 
         try:
             with zipfile.ZipFile(zip_file_name, "w", zipfile.ZIP_DEFLATED) as zf:
-                json_file_name = os.path.join(self.storage_path, file_name + ".json")
-                log_file_name = os.path.join(self.storage_path, file_name + ".log")
+                json_file_name = os.path.join(self.storage_path, f"{file_name}.json")
+                log_file_name = os.path.join(self.storage_path, f"{file_name}.log")
+                png_file_name = os.path.join(self.storage_path, f"{file_name}.png")
 
                 # Add the JSON file to the ZIP archive
                 zf.write(json_file_name, os.path.basename(json_file_name))
@@ -77,8 +82,11 @@ class Snapshots:
                 # Add the log file to the ZIP archive
                 zf.write(log_file_name, os.path.basename(log_file_name))
 
+                # Add the PNG file to the ZIP archive
+                zf.write(png_file_name, os.path.basename(png_file_name))
+
                 # Check if the file_name.raw exists
-                raw_file_name = os.path.join(self.storage_path, file_name + ".raw")
+                raw_file_name = os.path.join(self.storage_path, f"{file_name}.raw")
                 if os.path.exists(raw_file_name):
                     # Add the .raw file to the ZIP archive
                     zf.write(raw_file_name, os.path.basename(raw_file_name))
@@ -95,7 +103,12 @@ class Snapshots:
         except Exception as e:
             _LOGGER.warning("Error while cleaning up original files: %s", str(e))
 
-    def data_snapshot(self, file_name, json_data):
+    def data_snapshot(self, file_name: str, json_data: any) -> None:
+        """
+        Save JSON data and filtered logs to a ZIP archive.
+        :param file_name: Vacuum friendly name
+        :param json_data: Vacuum JSON data
+        """
         try:
             self._get_data(file_name, json_data)
             self._zip_snapshot(file_name)

@@ -1,25 +1,27 @@
 """valetudo vacuum camera"""
+
 import logging
 
 from homeassistant import config_entries, core
 from homeassistant.components import mqtt
 from homeassistant.const import CONF_UNIQUE_ID, Platform
 from homeassistant.exceptions import ConfigEntryNotReady
-from .const import (
-    CONF_MQTT_HOST,
-    CONF_MQTT_USER,
-    CONF_MQTT_PASS,
-    CONF_VACUUM_CONNECTION_STRING,
-    CONF_VACUUM_CONFIG_ENTRY_ID,
-    CONF_VACUUM_IDENTIFIERS,
-    DOMAIN,
-)
+
 from custom_components.valetudo_vacuum_camera.common import (
-    get_entity_identifier_from_mqtt,
     get_device_info,
+    get_entity_identifier_from_mqtt,
     get_vacuum_mqtt_topic,
     get_vacuum_unique_id_from_mqtt_topic,
     update_options,
+)
+from .const import (
+    CONF_MQTT_HOST,
+    CONF_MQTT_PASS,
+    CONF_MQTT_USER,
+    CONF_VACUUM_CONFIG_ENTRY_ID,
+    CONF_VACUUM_CONNECTION_STRING,
+    CONF_VACUUM_IDENTIFIERS,
+    DOMAIN,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -35,9 +37,8 @@ async def options_update_listener(
 
 
 async def async_migrate_entry(hass, config_entry: config_entries.ConfigEntry):
-    mqtt_topic_base = ""
-
     """Migrate old entry."""
+    mqtt_topic_base = ""
     _LOGGER.debug("Migrating config entry from version %s", config_entry.version)
 
     if config_entry.version <= 2.0:
@@ -132,8 +133,8 @@ async def async_migrate_entry(hass, config_entry: config_entries.ConfigEntry):
                 "alpha_wall": 255.0,
                 "alpha_robot": 255.0,
                 "alpha_go_to": 255.0,
-                "alpha_no_go": 25.0,
-                "alpha_zone_clean": 25.0,
+                "alpha_no_go": 125.0,
+                "alpha_zone_clean": 125.0,
                 "alpha_background": 255.0,
                 "alpha_text": 255.0,
                 "alpha_room_0": 255.0,
@@ -160,16 +161,21 @@ async def async_migrate_entry(hass, config_entry: config_entries.ConfigEntry):
             config_entry, data=new_data, options=new_options
         )
 
-    if config_entry.version == 2.1:
+    if config_entry.version == 2.2 or config_entry.version == 2.1:
         old_data = {**config_entry.data}
         new_data = {"vacuum_config_entry": old_data["vacuum_config_entry"]}
         _LOGGER.debug(dict(new_data))
         old_options = {**config_entry.options}
         if len(old_options) != 0:
-            tmp_option = {"margins": "150"}
+            tmp_option = {
+                "margins": "150",
+                "auto_zoom": False,
+                "get_svg_file": False,
+                "enable_www_snapshots": True,
+            }
             new_options = await update_options(old_options, tmp_option)
-            _LOGGER.debug(dict(new_options))
-            config_entry.version = 2.2
+            _LOGGER.debug(f"migration data:{dict(new_options)}")
+            config_entry.version = 2.3
             hass.config_entries.async_update_entry(
                 config_entry, data=new_data, options=new_options
             )
@@ -238,6 +244,7 @@ async def async_unload_entry(
     return unload_ok
 
 
+# noinspection PyCallingNonCallable
 async def async_setup(hass: core.HomeAssistant, config: dict) -> bool:
     """Set up the Valetudo Camera Custom component from yaml configuration."""
     # Make sure MQTT integration is enabled and the client is available

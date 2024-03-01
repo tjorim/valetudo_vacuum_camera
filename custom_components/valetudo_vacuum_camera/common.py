@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import logging
 
-from homeassistant.core import HomeAssistant
 from homeassistant.components import mqtt
 from homeassistant.components.mqtt import DOMAIN as MQTT_DOMAIN
 from homeassistant.components.vacuum import DOMAIN as VACUUM_DOMAIN
-from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers import entity_registry as er
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -83,19 +82,17 @@ async def update_options(bk_options, new_options):
     """
     Keep track of the modified options.
     Returns updated options after editing in Config_Flow.
+    version: 1.5.8
     """
     # Initialize updated_options as an empty dictionary
     updated_options = {}
 
     keys_to_update = [
         "rotate_image",
-        "crop_image",
         "margins",
-        "trim_top",
-        "trim_bottom",
-        "trim_left",
-        "trim_right",
+        "auto_zoom",
         "show_vac_status",
+        "get_svg_file",
         "enable_www_snapshots",
         "color_charger",
         "color_move",

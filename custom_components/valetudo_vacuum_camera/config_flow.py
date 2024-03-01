@@ -1,52 +1,75 @@
-"""config_flow ver.1.5.3
+"""config_flow ver.1.5.9
 IMPORTANT: When adding new options to the camera
 it will be mandatory to update const.py update_options.
 Format of the new constants must be CONST_NAME = "const_name" update also
 sting.json and en.json please.
 """
 
-import voluptuous as vol
 import logging
-from typing import Any, Dict, Optional
 import os
 import shutil
+from typing import Any, Dict, Optional
 
-
-from homeassistant.components.vacuum import DOMAIN as ZONE_VACUUM
+import homeassistant.helpers.config_validation as cv
+import voluptuous as vol
 from homeassistant import config_entries
+from homeassistant.components.vacuum import DOMAIN as ZONE_VACUUM
 from homeassistant.const import CONF_UNIQUE_ID
 from homeassistant.core import callback
-from homeassistant.helpers.storage import STORAGE_DIR
-import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.selector import (
+    BooleanSelector,
     ColorRGBSelector,
     EntitySelector,
     EntitySelectorConfig,
     NumberSelector,
     NumberSelectorConfig,
-    BooleanSelector,
-    SelectSelectorConfig,
     SelectSelector,
+    SelectSelectorConfig,
     SelectSelectorMode,
 )
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.storage import STORAGE_DIR
+
+from .common import (  # get_entity_identifier_from_mqtt,
+    get_device_info,
+    get_vacuum_mqtt_topic,
+    get_vacuum_unique_id_from_mqtt_topic,
+    update_options,
+)
 from .const import (
-    DOMAIN,
-    ATTR_ROTATE,
+    ALPHA_BACKGROUND,
+    ALPHA_CHARGER,
+    ALPHA_GO_TO,
+    ALPHA_MOVE,
+    ALPHA_NO_GO,
+    ALPHA_ROBOT,
+    ALPHA_ROOM_0,
+    ALPHA_ROOM_1,
+    ALPHA_ROOM_2,
+    ALPHA_ROOM_3,
+    ALPHA_ROOM_4,
+    ALPHA_ROOM_5,
+    ALPHA_ROOM_6,
+    ALPHA_ROOM_7,
+    ALPHA_ROOM_8,
+    ALPHA_ROOM_9,
+    ALPHA_ROOM_10,
+    ALPHA_ROOM_11,
+    ALPHA_ROOM_12,
+    ALPHA_ROOM_13,
+    ALPHA_ROOM_14,
+    ALPHA_ROOM_15,
+    ALPHA_TEXT,
+    ALPHA_WALL,
+    ALPHA_ZONE_CLEAN,
     ATTR_MARGINS,
-    CONF_VAC_STAT,
-    CONF_SNAPSHOTS_ENABLE,
-    CONF_VACUUM_CONFIG_ENTRY_ID,
-    CONF_VACUUM_ENTITY_ID,
-    COLOR_MOVE,
-    COLOR_ROBOT,
-    COLOR_WALL,
-    COLOR_CHARGER,
+    ATTR_ROTATE,
     COLOR_BACKGROUND,
+    COLOR_CHARGER,
     COLOR_GO_TO,
+    COLOR_MOVE,
     COLOR_NO_GO,
-    COLOR_ZONE_CLEAN,
-    COLOR_TEXT,
+    COLOR_ROBOT,
     COLOR_ROOM_0,
     COLOR_ROOM_1,
     COLOR_ROOM_2,
@@ -63,41 +86,19 @@ from .const import (
     COLOR_ROOM_13,
     COLOR_ROOM_14,
     COLOR_ROOM_15,
+    COLOR_TEXT,
+    COLOR_WALL,
+    COLOR_ZONE_CLEAN,
+    CONF_AUTO_ZOOM,
+    CONF_EXPORT_SVG,
+    CONF_SNAPSHOTS_ENABLE,
+    CONF_VAC_STAT,
+    CONF_VACUUM_CONFIG_ENTRY_ID,
+    CONF_VACUUM_ENTITY_ID,
+    DOMAIN,
     IS_ALPHA,
-    IS_ALPHA_R2,
     IS_ALPHA_R1,
-    ALPHA_BACKGROUND,
-    ALPHA_CHARGER,
-    ALPHA_MOVE,
-    ALPHA_NO_GO,
-    ALPHA_WALL,
-    ALPHA_ROBOT,
-    ALPHA_TEXT,
-    ALPHA_GO_TO,
-    ALPHA_ZONE_CLEAN,
-    ALPHA_ROOM_0,
-    ALPHA_ROOM_1,
-    ALPHA_ROOM_2,
-    ALPHA_ROOM_3,
-    ALPHA_ROOM_4,
-    ALPHA_ROOM_5,
-    ALPHA_ROOM_6,
-    ALPHA_ROOM_7,
-    ALPHA_ROOM_8,
-    ALPHA_ROOM_9,
-    ALPHA_ROOM_10,
-    ALPHA_ROOM_11,
-    ALPHA_ROOM_12,
-    ALPHA_ROOM_13,
-    ALPHA_ROOM_14,
-    ALPHA_ROOM_15
-)
-from .common import (
-    # get_entity_identifier_from_mqtt,
-    get_device_info,
-    get_vacuum_mqtt_topic,
-    get_vacuum_unique_id_from_mqtt_topic,
-    update_options,
+    IS_ALPHA_R2,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -112,7 +113,7 @@ VACUUM_SCHEMA = vol.Schema(
 
 
 class ValetudoCameraFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
-    VERSION = 2.2
+    VERSION = 2.3
 
     def __init__(self):
         self.data = {}
@@ -131,8 +132,8 @@ class ValetudoCameraFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
 
             for existing_entity in self._async_current_entries():
                 if (
-                        existing_entity.data.get(CONF_VACUUM_ENTITY_ID) == vacuum_entity.id
-                        or existing_entity.data.get(CONF_UNIQUE_ID) == unique_id
+                    existing_entity.data.get(CONF_VACUUM_ENTITY_ID) == vacuum_entity.id
+                    or existing_entity.data.get(CONF_UNIQUE_ID) == unique_id
                 ):
                     return self.async_abort(reason="already_configured")
 
@@ -150,13 +151,10 @@ class ValetudoCameraFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             self.options.update(
                 {
                     "rotate_image": "0",
-                    "crop_image": "50",
                     "margins": "150",
-                    "trim_top": "0",
-                    "trim_bottom": "0",
-                    "trim_left": "0",
-                    "trim_right": "0",
+                    "auto_zoom": False,
                     "show_vac_status": False,
+                    "get_svg_file": False,
                     "enable_www_snapshots": False,
                     "color_charger": [255, 128, 0],
                     "color_move": [238, 247, 255],
@@ -211,7 +209,7 @@ class ValetudoCameraFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 }
             )
 
-            # Finally setup the entry.
+            # Finally set up the entry.
             _, vacuum_device = get_device_info(
                 self.data[CONF_VACUUM_CONFIG_ENTRY_ID], self.hass
             )
@@ -231,7 +229,7 @@ class ValetudoCameraFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(
-            config_entry: config_entries.ConfigEntry,
+        config_entry: config_entries.ConfigEntry,
     ) -> config_entries.OptionsFlow:
         """Create the options flow."""
         return OptionsFlowHandler(config_entry)
@@ -264,12 +262,20 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                         ATTR_MARGINS, default=config_entry.options.get("margins")
                     ): cv.string,
                     vol.Optional(
+                        CONF_AUTO_ZOOM,
+                        default=config_entry.options.get("auto_zoom"),
+                    ): BooleanSelector(),
+                    vol.Optional(
                         CONF_VAC_STAT,
                         default=config_entry.options.get("show_vac_status"),
                     ): BooleanSelector(),
                     vol.Optional(
                         COLOR_TEXT, default=config_entry.options.get("color_text")
                     ): ColorRGBSelector(),
+                    vol.Optional(
+                        CONF_EXPORT_SVG,
+                        default=config_entry.options.get(CONF_EXPORT_SVG, False),
+                    ): BooleanSelector(),
                     vol.Optional(
                         CONF_SNAPSHOTS_ENABLE,
                         default=config_entry.options.get(CONF_SNAPSHOTS_ENABLE, True),
@@ -468,6 +474,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             )
 
     async def async_step_init(self, user_input=None):
+        """
+        Start the options menu configuration.
+        """
+        _LOGGER.info(f"{self.config_entry.unique_id}: Options Configuration Started.")
         errors = {}
         if user_input is not None:
             if "camera_config_action" in user_input:
@@ -491,14 +501,18 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 else:
                     errors["base"] = "incorrect_options_action"
 
-        menu_keys = SelectSelectorConfig(options=[
-            {"label": "configure_image", "value": "opt_1"},
-            {"label": "configure_general_colours", "value": "opt_2"},
-            {"label": "configure_rooms_colours_1", "value": "opt_3"},
-            {"label": "configure_rooms_colours_2", "value": "opt_4"},
-            {"label": "copy_camera_logs_to_www", "value": "opt_5"}],
+        # noinspection PyArgumentList
+        menu_keys = SelectSelectorConfig(
+            options=[
+                {"label": "configure_image", "value": "opt_1"},
+                {"label": "configure_general_colours", "value": "opt_2"},
+                {"label": "configure_rooms_colours_1", "value": "opt_3"},
+                {"label": "configure_rooms_colours_2", "value": "opt_4"},
+                {"label": "copy_camera_logs_to_www", "value": "opt_5"},
+            ],
             mode=SelectSelectorMode.LIST,
-            translation_key="camera_config_action",)
+            translation_key="camera_config_action",
+        )
 
         data_schema = {"camera_config_action": SelectSelector(menu_keys)}
 
@@ -509,14 +523,18 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         )
 
     async def async_step_image_opt(self, user_input: Optional[Dict[str, Any]] = None):
-        _LOGGER.debug("Image Options Configuration Started")
+        """
+        Images Options Configuration
+        """
         if user_input is not None:
             self.options.update(
                 {
                     "rotate_image": user_input.get(ATTR_ROTATE),
                     "margins": user_input.get(ATTR_MARGINS),
+                    "auto_zoom": user_input.get(CONF_AUTO_ZOOM),
                     "show_vac_status": user_input.get(CONF_VAC_STAT),
                     "color_text": user_input.get(COLOR_TEXT),
+                    "get_svg_file": user_input.get(CONF_EXPORT_SVG),
                     "enable_www_snapshots": user_input.get(CONF_SNAPSHOTS_ENABLE),
                 }
             )
@@ -530,8 +548,11 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         )
 
     async def async_step_base_colours(
-            self, user_input: Optional[Dict[str, Any]] = None
+        self, user_input: Optional[Dict[str, Any]] = None
     ):
+        """
+        Base Colours Configuration.
+        """
         _LOGGER.debug("Base Colours Configuration Started")
         if user_input is not None:
             self.options.update(
@@ -560,6 +581,9 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         )
 
     async def async_step_alpha_1(self, user_input: Optional[Dict[str, Any]] = None):
+        """
+        Transparency Configuration for the Base Colours
+        """
         _LOGGER.debug("Base Colours Alpha Configuration Started")
         if user_input is not None:
             self.options.update(
@@ -584,9 +608,12 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         )
 
     async def async_step_rooms_colours_1(
-            self, user_input: Optional[Dict[str, Any]] = None
+        self, user_input: Optional[Dict[str, Any]] = None
     ):
-        _LOGGER.debug("Rooms Colours Configuration Started")
+        """
+        Rooms 1 to 8 Colours Configuration.
+        """
+        _LOGGER.info("Rooms 1 to 8 Colours Configuration Started.")
         if user_input is not None:
             self.options.update(
                 {
@@ -616,9 +643,12 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         )
 
     async def async_step_rooms_colours_2(
-            self, user_input: Optional[Dict[str, Any]] = None
+        self, user_input: Optional[Dict[str, Any]] = None
     ):
-        _LOGGER.debug("Rooms 2/2 Colours Configuration Started")
+        """
+        Rooms 9 to 15 Colours Configuration.
+        """
+        _LOGGER.info("Rooms 9 to 15 Colours Configuration Started.")
         if user_input is not None:
             self.options.update(
                 {
@@ -648,7 +678,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         )
 
     async def async_step_alpha_2(self, user_input: Optional[Dict[str, Any]] = None):
-        _LOGGER.debug("Rooms Alpha 2 Configuration Started")
+        """
+        Transparency Configuration for the Rooms 1 to 8.
+        """
+        _LOGGER.info("Rooms 1 to 8 Alpha Configuration Started")
         if user_input is not None:
             self.options.update(
                 {
@@ -672,7 +705,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         )
 
     async def async_step_alpha_3(self, user_input: Optional[Dict[str, Any]] = None):
-        _LOGGER.debug("Rooms Alpha 3 Configuration Started")
+        """
+        Transparency Configuration for Rooms 9 to 15.
+        """
+        _LOGGER.info("Rooms 9 to 15 Alpha Configuration Started")
         if user_input is not None:
             self.options.update(
                 {
@@ -696,6 +732,9 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         )
 
     async def async_download_logs(self):
+        """
+        Copy the logs from .storage to www config folder.
+        """
         user_input = None
         ha_dir = os.getcwd()
         ha_storage = STORAGE_DIR
@@ -709,7 +748,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         return self.async_show_form(step_id="download")
 
     async def async_step_opt_save(self):
-        _LOGGER.info("Storing Updated Camera Options")
+        """
+        Save the options in a sorted way. It stores all the options.
+        """
+        _LOGGER.info(f"Storing Updated Camera ({self.config_entry.unique_id}) Options.")
         _, vacuum_device = get_device_info(
             self.config_entry.data.get(CONF_VACUUM_CONFIG_ENTRY_ID), self.hass
         )

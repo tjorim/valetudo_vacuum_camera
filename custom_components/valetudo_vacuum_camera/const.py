@@ -1,5 +1,6 @@
 """Constants for the valetudo_vacuum_camera integration."""
-"""Version 1.5.0"""
+
+"""Version 1.5.9"""
 
 """Required in Config_Flow"""
 PLATFORMS = ["camera"]
@@ -21,10 +22,12 @@ CONF_VACUUM_ENTITY_ID = "vacuum_entity"
 CONF_VACUUM_CONFIG_ENTRY_ID = "vacuum_config_entry"
 CONF_VACUUM_IDENTIFIERS = "vacuum_identifiers"
 CONF_SNAPSHOTS_ENABLE = "enable_www_snapshots"
+CONF_EXPORT_SVG = "get_svg_file"
+CONF_AUTO_ZOOM = "auto_zoom"
 ICON = "mdi:camera"
 NAME = "Valetudo Vacuum Camera"
 
-"""App Constants"""
+"""App Constants. Not in use, and dummy values"""
 IDLE_SCAN_INTERVAL = 120
 CLEANING_SCAN_INTERVAL = 5
 IS_ALPHA = "add_base_alpha"
