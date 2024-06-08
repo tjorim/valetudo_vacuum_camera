@@ -7,11 +7,15 @@ import shutil
 
 from homeassistant import config_entries, core
 from homeassistant.components import mqtt
-from homeassistant.const import CONF_UNIQUE_ID, Platform
+from homeassistant.const import (
+    CONF_UNIQUE_ID,
+    EVENT_HOMEASSISTANT_FINAL_WRITE,
+    Platform,
+)
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.storage import STORAGE_DIR
 
-from custom_components.valetudo_vacuum_camera.common import (
+from .common import (
     get_device_info,
     get_entity_identifier_from_mqtt,
     get_vacuum_mqtt_topic,
@@ -27,6 +31,7 @@ from .const import (
     CONF_VACUUM_IDENTIFIERS,
     DOMAIN,
 )
+from .utils.users_data import async_rename_room_description, get_translations_vacuum_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -165,76 +170,43 @@ async def async_migrate_entry(hass, config_entry: config_entries.ConfigEntry):
             config_entry, data=new_data, options=new_options
         )
 
-    if config_entry.version == 2.2 or config_entry.version == 2.1:
+    if config_entry.version <= 3.0:
         old_data = {**config_entry.data}
         new_data = {"vacuum_config_entry": old_data["vacuum_config_entry"]}
         _LOGGER.debug(dict(new_data))
         old_options = {**config_entry.options}
         if len(old_options) != 0:
-            tmp_option = {
-                "margins": "150",
-                "auto_zoom": False,
-                "get_svg_file": False,
-                "enable_www_snapshots": True,
-            }
-            new_options = await update_options(old_options, tmp_option)
-            _LOGGER.debug(f"migration data:{dict(new_options)}")
-            config_entry.version = 2.3
-            hass.config_entries.async_update_entry(
-                config_entry, data=new_data, options=new_options
-            )
+            tmp_option = {}
+            if config_entry.version == 3.0:
+                tmp_option = {
+                    "offset_top": 0,
+                    "offset_bottom": 0,
+                    "offset_left": 0,
+                    "offset_right": 0,
+                }
+            elif config_entry.version < 3:
+                tmp_option = {
+                    "margins": "100",
+                    "auto_zoom": False,
+                    "get_svg_file": False,
+                    "enable_www_snapshots": True,
+                    "aspect_ratio": "None",
+                    "zoom_lock_ratio": True,
+                    "vac_status_font": "custom_components/valetudo_vacuum_camera/utils/fonts/FiraSans.ttf",
+                    "vac_status_size": 50,
+                    "vac_status_position": True,
+                    "offset_top": 0,
+                    "offset_bottom": 0,
+                    "offset_left": 0,
+                    "offset_right": 0,
+                }
+                await move_data_to_valetudo_camera(hass.config.path(STORAGE_DIR))
 
-    if config_entry.version == 2.3:
-        old_data = {**config_entry.data}
-        new_data = {"vacuum_config_entry": old_data["vacuum_config_entry"]}
-        _LOGGER.debug(dict(new_data))
-        old_options = {**config_entry.options}
-        if len(old_options) != 0:
-            tmp_option = {
-                "aspect_ratio": "None",
-                "zoom_lock_ratio": True,
-                "vac_status_font": "custom_components/valetudo_vacuum_camera/utils/fonts/FiraSans.ttf",
-                "vac_status_size": 50,
-                "vac_status_position": True,
-            }
-            new_options = await update_options(old_options, tmp_option)
-            _LOGGER.debug(f"migration data:{dict(new_options)}")
-            config_entry.version = 2.4
-            hass.config_entries.async_update_entry(
-                config_entry, data=new_data, options=new_options
-            )
-
-    if config_entry.version == 2.4:
-        _LOGGER.debug(
-            "Starting migration data from .storage to valetudo_camera folder."
-        )
-        await move_data_to_valetudo_camera(hass.config.path(STORAGE_DIR))
-        old_data = {**config_entry.data}
-        new_data = {"vacuum_config_entry": old_data["vacuum_config_entry"]}
-        _LOGGER.debug(dict(new_data))
-        old_options = {**config_entry.options}
-        if len(old_options) != 0:
-            config_entry.version = 3.0
-            hass.config_entries.async_update_entry(
-                config_entry, data=new_data, options=old_options
-            )
-
-    if config_entry.version == 3.0:
-        if not os.path.exists(
-            os.path.join(hass.config.path(STORAGE_DIR), "valetudo_camera")
-        ):
-            await move_data_to_valetudo_camera(hass.config.path(STORAGE_DIR))
-        old_data = {**config_entry.data}
-        new_data = {"vacuum_config_entry": old_data["vacuum_config_entry"]}
-        _LOGGER.debug(dict(new_data))
-        old_options = {**config_entry.options}
-        if len(old_options) != 0:
-            tmp_option = {
-                "offset_top": 0,
-                "offset_bottom": 0,
-                "offset_left": 0,
-                "offset_right": 0,
-            }
+            if tmp_option == {}:
+                _LOGGER.error(
+                    "Please REMOVE and SETUP the Camera again. Error in migration process!!"
+                )
+                return False
             new_options = await update_options(old_options, tmp_option)
             _LOGGER.debug(f"migration data:{dict(new_options)}")
             config_entry.version = 3.1
@@ -247,9 +219,7 @@ async def async_migrate_entry(hass, config_entry: config_entries.ConfigEntry):
             )
             return False
 
-    _LOGGER.info(
-        f"Migration to config entry version %s successful {config_entry.version}"
-    )
+    _LOGGER.info(f"Migration to config entry version successful {config_entry.version}")
     return True
 
 
@@ -306,9 +276,44 @@ async def async_unload_entry(
     return unload_ok
 
 
+def find_vacuum_files(directory) -> list[str] or None:
+    """Find all 'room_data*.json' files and extract vacuum names."""
+    # Create the full path pattern for glob to match
+    path_pattern = os.path.join(directory, "room_data*.json")
+    # Find all files matching the pattern
+    files = glob.glob(path_pattern)
+    if not files:
+        _LOGGER.debug(f"No room data files found in {directory}.")
+        return None
+    # Extract vacuum names from filenames
+    vacuum_names = [
+        os.path.splitext(os.path.basename(file))[0].split("room_data_")[1]
+        for file in files
+    ]
+    return vacuum_names
+
+
+async def handle_homeassistant_stop(event):
+    """Handle Home Assistant stop event."""
+    _LOGGER.debug("Home Assistant is stopping. Writing down the rooms data.")
+    hass = core.HomeAssistant(os.getcwd())
+    storage = os.path.join(os.getcwd(), STORAGE_DIR, "valetudo_camera")
+    _LOGGER.debug(f"Storage path: {storage}")
+    vacuum_entity_id = get_translations_vacuum_id(storage)
+    if not vacuum_entity_id:
+        _LOGGER.debug("No vacuum room data found. Aborting!")
+        return True
+    _LOGGER.debug(f"Writing down the rooms data for {vacuum_entity_id}.")
+    await async_rename_room_description(hass, storage, vacuum_entity_id)
+    return True
+
+
 # noinspection PyCallingNonCallable
 async def async_setup(hass: core.HomeAssistant, config: dict) -> bool:
     """Set up the Valetudo Camera Custom component from yaml configuration."""
+    hass.bus.async_listen_once(
+        EVENT_HOMEASSISTANT_FINAL_WRITE, handle_homeassistant_stop
+    )
     # Make sure MQTT integration is enabled and the client is available
     if not await mqtt.async_wait_for_mqtt_client(hass):
         _LOGGER.error("MQTT integration is not available")
@@ -328,7 +333,6 @@ async def move_data_to_valetudo_camera(storage):
             _LOGGER.debug(f"Path {storage_folder} already exist.")
         # Move files matching the patterns to the valetudo_camera folder
         else:
-
             file_patterns = ["*.zip", "*.png", "*.log", "*.raw"]
             for pattern in file_patterns:
                 files_to_move = glob.glob(os.path.join(storage_folder, pattern))

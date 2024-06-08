@@ -3,14 +3,15 @@ Collections of Drawing Utility
 Drawable is part of the Image_Handler
 used functions to draw the elements on the Numpy Array
 that is actually our camera frame.
-Version: v2024.04
+Version: v2024.06.1
 """
 
-import logging
+from __future__ import annotations
+
 import math
 
-import numpy as np
 from PIL import ImageDraw, ImageFont
+import numpy as np
 
 from custom_components.valetudo_vacuum_camera.types import (
     Color,
@@ -20,8 +21,6 @@ from custom_components.valetudo_vacuum_camera.types import (
 )
 
 # import re
-
-_LOGGER = logging.getLogger(__name__)
 
 
 class Drawable:
@@ -45,15 +44,17 @@ class Drawable:
         layer: NumpyArray, pixels: dict, pixel_size: int, color: Color
     ) -> NumpyArray:
         """Drawing the layers (rooms) from the vacuum json data."""
-        # Create a backup of the array the image
         image_array = layer
-        # Draw rectangles for each point in data
+        # Loop through pixels to find min and max coordinates
         for x, y, z in pixels:
+            col = x * pixel_size
+            row = y * pixel_size
+            # Draw pixels
             for i in range(z):
-                col = (x + i) * pixel_size
-                row = y * pixel_size
-                image_array[row : row + pixel_size, col : col + pixel_size] = color
-        # Convert the image array to a PIL image
+                image_array[
+                    row : row + pixel_size,
+                    col + i * pixel_size : col + (i + 1) * pixel_size,
+                ] = color
         return image_array
 
     @staticmethod
@@ -417,7 +418,6 @@ class Drawable:
         # to draw the robot.
         tmp_x, tmp_y = 26, 26
         # Draw Robot
-        _LOGGER.info(f"Drawing {log} Robot With Angle: {angle}")
         radius = 25  # Radius of the vacuum constant
         r_scaled = radius // 11  # Offset scale for placement of the objects.
         r_cover = r_scaled * 12  # Scale factor for cover
@@ -504,7 +504,7 @@ class Drawable:
         """
         for obstacle_info in obstacle_info_list:
             enter = obstacle_info.get("points", {})
-            label = obstacle_info.get("label", {})
+            # label = obstacle_info.get("label", {})
             center = (enter["x"], enter["y"])
 
             radius = 6

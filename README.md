@@ -15,18 +15,22 @@
 **About:**
 Extract the maps for rooted Vacuum Cleaners with Valetudo [Hypfer](https://valetudo.cloud/) or [RE(rand256)](https://github.com/rand256/valetudo) Firmware connected to Home Assistant via MQTT, [easy setup](./docs/install.md) thanks to [HACS](https://hacs.xyz/)  and guided Home Assistant GUI configuration.
 
-**What it is:** 
-This custom component anyhow is simple to install and setup, decode and render the vacuum maps to Home Assistant in few clicks. 
+**What it is:**
+
+❗This is an _unofficial_ repo and is not created, maintained, or in any sense linked to [valetudo.cloud](https://valetudo.cloud)
+
+This custom component is simple to install and setup, decode and render the vacuum maps to Home Assistant in few clicks.
 When you want also to control your vacuum you will need to also install the:
 [lovelace-xiaomi-vacuum-map-card (recommended)](https://github.com/PiotrMachowski/lovelace-xiaomi-vacuum-map-card) from HACS as well.
 
 ### Limitations and Compatibility:
 <details>
    <summary>
-      Please read the limitations and compatibility before to install the camera.
+      Please Read the "Limitations and Compatibility" before to install the camera.
    </summary>
 
-I kindly ask for your understanding regarding any limitations you may encounter with this custom component.
+I kindly ask for your understanding regarding any limitations you may encounter with this custom component (please read also
+our [**notice**](./NOTICE.txt)).
 While it's been extensively tested on a PI4 8GB and now also on ProxMox VE, hardware below PI4 8GB may face issues. **Your feedback on such platforms is invaluable**;
 please report any problems you encounter.
 As a team of one, I'm diligently working to address compatibility across all environments, but this process takes time. In the interim, you can utilize [ValetudoPNG](https://github.com/erkexzcx/valetudopng) as an alternative on unsupported platforms.
@@ -34,8 +38,8 @@ Your support in making this component compatible with all environments is greatl
 For further details on how the camera operates and how you can contribute, refer to the Wiki section of this project. Your patience and assistance are crucial as we strive toward our goal of universal compatibility.
 
 - PI3 4GB: The camera is working on PI3 4GB, anyhow no chance there to run two vacuums cameras at the same time.
-- PI4 4GB: The camera is working on PI4 4GB, anyhow run two vacuums cameras at the same time isn't advised.
-</details>
+- PI4 4GB: The camera is working on PI4 4GB, anyhow run two vacuums cameras at the same time isn't advised even if possible.
+</details> 
 
 
 ### Known Supported Vacuums:
@@ -55,18 +59,20 @@ For further details on how the camera operates and how you can contribute, refer
 
 </details>
 
-![Screenshot 2023-09-12 at 22 53 29](https://github.com/sca075/valetudo_vacuum_camera/assets/82227818/4f5981e3-39f2-449a-8a43-39870631e9a1)
-
 
 ### How to install:
-Via [HACS](https://hacs.xyz//setup/download) please follow. The instructions in [here](./docs/install.md) show detailed steps and will help to set up the camera also without HACS (manual setup). Our setup guide also includes **important** informations on how to setup the [lovelace-xiaomi-vacuum-map-card (recommended)](https://github.com/PiotrMachowski/lovelace-xiaomi-vacuum-map-card).
 
-### Features: 
+[![Open HACS repository in Home Assistant](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=sca075&repository=valetudo_vacuum_camera&category=integration)
+
+The instructions in [here](./docs/install.md) show detailed steps and will help to set up the camera also without HACS (manual setup).
+Our setup guide also includes **important** informations on how to setup the [lovelace-xiaomi-vacuum-map-card (recommended)](https://github.com/PiotrMachowski/lovelace-xiaomi-vacuum-map-card).
+
+### Features:
 <details><summary> We here List what this camera offers as futures.</summary>
 
 1) All Valetudo vacuums are supported.
 2) **Automatically Generate the calibration points for the lovelace-xiaomi-vacuum-map-card** to ensure full compatibility to this user-friendly card.
-3) **Automatically Generate rooms based configuration when vacuum support this functionality**, this will allow you to configure the rooms quickly on the [lovelace-xiaomi-vacuum-map-card](https://github.com/PiotrMachowski/lovelace-xiaomi-vacuum-map-card). 
+3) **Automatically Generate rooms based configuration when vacuum support this functionality**, this will allow you to configure the rooms quickly on the [lovelace-xiaomi-vacuum-map-card](https://github.com/PiotrMachowski/lovelace-xiaomi-vacuum-map-card).
 4) **The camera take automatically [snapshots](./docs/snapshots.md) (when the vacuum idle/ error / docked)**. It is also possible to save a snapshot using a service call from Home Assistant with the file name and location you want to use. By the default the snapshot is saved in the www folder of Home Assistant. If the snapshot is disabled from Image Options the png will be deleted automatically.
    ```
    service: camera.snapshot
@@ -94,7 +100,6 @@ Via [HACS](https://hacs.xyz//setup/download) please follow. The instructions in 
 - This integration is developed and tested using a PI4 with Home Assistant OS fully updated [to the last version](https://www.home-assistant.io/faq/release/), this allows us to confirm that the component is working properly with Home Assistant. Tested also on ProxMox and Docker Supervised "production" enviroment (fully setup home installation).
 ### Tanks to:
 - [@PiotrMachowski](https://github.com/PiotrMachowski) inspiring this integration and his amazing work.
-- [@Hypfer](https://github.com/Hypfer) for freeing the vacuums from the clouds and continuously improve our vacuums :)
 - [@billyourself](https://github.com/billyourself) for providing us the data and motivation to evolve this project.
 - [@Skeletorjus](https://github.com/Skeletorjus) that using this integration gave us several ideas to improve it.
 - [@rohankapoorcom](https://github.com/rohankapoorcom) autor of the v1.4.0 that make really easy to set up this integration.

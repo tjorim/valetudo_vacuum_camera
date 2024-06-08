@@ -1,6 +1,6 @@
 """
 Multiprocessing module
-Version: v2024.04.2
+Version: v2024.06.0
 This module provide the image multiprocessing in order to
 avoid the overload of the main_thread of Home Assistant.
 """
@@ -8,13 +8,14 @@ avoid the overload of the main_thread of Home Assistant.
 from __future__ import annotations
 
 import asyncio
-import concurrent.futures
-import json
-import logging
 from asyncio import gather, get_event_loop
+import concurrent.futures
+import logging
 
 from .types import Color, JsonType, PilPNG
 from .utils.drawable import Drawable as Draw
+from .utils.status_text import StatusText
+from .utils.users_data import async_get_active_user_language
 from .valetudo.hypfer.image_handler import MapImageHandler
 from .valetudo.rand256.image_handler import ReImageHandler
 
@@ -32,9 +33,11 @@ class CameraProcessor:
         self._map_handler = MapImageHandler(camera_shared)
         self._re_handler = ReImageHandler(camera_shared)
         self._shared = camera_shared
+        self._file_name = self._shared.file_name
         self._translations_path = self.hass.config.path(
-            f"custom_components/valetudo_vacuum_camera/translations/"
+            "custom_components/valetudo_vacuum_camera/translations/"
         )
+        self._status_text = StatusText(self.hass, self._shared)
 
     async def async_process_valetudo_data(self, parsed_json: JsonType) -> PilPNG | None:
         """
@@ -56,7 +59,9 @@ class CameraProcessor:
                         await self._map_handler.async_get_rooms_attributes()
                     )
                     if self._shared.map_rooms:
-                        _LOGGER.debug("State attributes rooms updated")
+                        _LOGGER.debug(
+                            f"\n{self._file_name}: State attributes rooms updated"
+                        )
 
                 if self._shared.attr_calibration_points is None:
                     self._shared.attr_calibration_points = (
@@ -71,6 +76,7 @@ class CameraProcessor:
                     )
 
                 self._shared.current_room = self._map_handler.get_robot_position()
+                self._shared.map_rooms = self._map_handler.room_propriety
 
                 if not self._shared.image_size:
                     self._shared.image_size = self._map_handler.get_img_size()
@@ -87,12 +93,12 @@ class CameraProcessor:
                     ):
                         self._shared.image_grab = False
                         _LOGGER.info(
-                            f"Suspended the camera data processing for: {self._shared.file_name}."
+                            f"\nSuspended the camera data processing for: {self._file_name}."
                         )
                         # take a snapshot
                         self._shared.snapshot_take = True
             return pil_img
-        _LOGGER.debug("No Json, returned None.")
+        _LOGGER.debug(f"\n{self._file_name}: No Json, returned None.")
         return None
 
     async def async_process_rand256_data(self, parsed_json: JsonType) -> PilPNG | None:
@@ -117,7 +123,9 @@ class CameraProcessor:
                             self._shared.map_pred_points,
                         ) = await self._re_handler.get_rooms_attributes(destinations)
                     if self._shared.map_rooms:
-                        _LOGGER.debug("State attributes rooms updated")
+                        _LOGGER.debug(
+                            f"\n{self._file_name}: State attributes rooms updated"
+                        )
 
                 if self._shared.attr_calibration_points is None:
                     self._shared.attr_calibration_points = (
@@ -141,7 +149,7 @@ class CameraProcessor:
                 ):
                     # suspend image processing if we are at the next frame.
                     _LOGGER.info(
-                        f"Suspended the camera data processing for: {self._shared.file_name}."
+                        f"\nSuspended the camera data processing for: {self._file_name}."
                     )
                     # take a snapshot
                     self._shared.snapshot_take = True
@@ -175,7 +183,7 @@ class CameraProcessor:
         loop = get_event_loop()
 
         with concurrent.futures.ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix=f"{self._shared.file_name}_camera"
+            max_workers=1, thread_name_prefix=f"{self._file_name}_camera"
         ) as executor:
             tasks = [
                 loop.run_in_executor(executor, self.process_valetudo_data, parsed_json)
@@ -184,7 +192,7 @@ class CameraProcessor:
             images = await gather(*tasks)
 
         if isinstance(images, list) and len(images) > 0:
-            _LOGGER.debug(f"{self._shared.file_name}: Camera frame processed.")
+            _LOGGER.debug(f"\n{self._file_name}: Camera frame processed.")
             result = images[0]
         else:
             result = None
@@ -199,97 +207,14 @@ class CameraProcessor:
     Functions to Thread the image text processing.
     """
 
-    def load_translations(self, language: str) -> JsonType:
-        """
-        Load the user selected language json file and return it.
-        @param language:self.hass.config.path(f"custom_components/valetudo_vacuum_camera/translations/
-        @return: json format
-        """
-        file_name = f"{language}.json"
-        file_path = f"{self._translations_path}/{file_name}"
-        try:
-            with open(file_path, "r") as file:
-                translations = json.load(file)
-        except FileNotFoundError:
-            return None
-        return translations
-
-    def get_vacuum_status_translation(self, language: str) -> any:
-        """
-        Get the vacuum status translation.
-        @param language: String IT, PL, DE, ES, FR, EN.
-        @return: Json data or None.
-        """
-        _LOGGER.debug(f"Language: {language}")
-        translations = self.load_translations(language)
-        vacuum_status_options = (
-            translations.get("selector", {}).get("vacuum_status", {}).get("options", {})
-        )
-        return vacuum_status_options
-
-    def translate_vacuum_status(self) -> str:
-        """Return the translated status."""
-        status = self._shared.vacuum_state
-        language = self._shared.user_language
-        translations = self.get_vacuum_status_translation(language)
-        if translations is not None and status in translations:
-            return translations[status]
-        else:
-            return status.capitalize()
-
-    def get_status_text(self, text_img: PilPNG) -> tuple[list[str], int]:
-        """
-        Compose the image status text.
-        :param text_img: Image to draw the text on.
-        :return status_text, text_size: List of the status text and the text size.
-        """
-        status_text = ["If you read me, something went wrong.."]  # default text
-        text_size_coverage = 1.5  # resize factor for the text
-        text_size = self._shared.vacuum_status_size  # default text size
-        charge_level = "\u03DE"  # unicode Koppa symbol
-        charging = "\u2211"  # unicode Charging symbol
-        vacuum_state = self.translate_vacuum_status()
-        if self._shared.show_vacuum_state:
-            status_text = [f"{self._shared.file_name}: {vacuum_state}"]
-            if not self._shared.vacuum_connection:
-                status_text = [f"{self._shared.file_name}: Disconnected from MQTT?"]
-            else:
-                if self._shared.current_room:
-                    try:
-                        in_room = self._shared.current_room.get("in_room", None)
-                    except (ValueError, KeyError):
-                        _LOGGER.debug("No in_room data.")
-                    else:
-                        if in_room:
-                            status_text.append(f" ({in_room})")
-                if self._shared.vacuum_state == "docked":
-                    if int(self._shared.vacuum_battery) <= 99:
-                        status_text.append(f" \u00B7 ")
-                        status_text.append(f"{charging}{charge_level} ")
-                        status_text.append(f"{self._shared.vacuum_battery}%")
-                        self._shared.vacuum_bat_charged = False
-                    else:
-                        status_text.append(f" \u00B7 ")
-                        status_text.append(f"{charge_level} ")
-                        status_text.append("Ready.")
-                        self._shared.vacuum_bat_charged = True
-                else:
-                    status_text.append(f" \u00B7 ")
-                    status_text.append(f"{charge_level}")
-                    status_text.append(f" {self._shared.vacuum_battery}%")
-                if text_size >= 50:
-                    text_pixels = sum(len(text) for text in status_text)
-                    text_size = int(
-                        (text_size_coverage * text_img.width) // text_pixels
-                    )
-        return status_text, text_size
-
     async def async_draw_image_text(
         self, pil_img: PilPNG, color: Color, font: str, img_top: bool = True
     ) -> PilPNG:
         """Draw text on the image."""
+        if self._shared.user_language is None:
+            self._shared.user_language = await async_get_active_user_language(self.hass)
         if pil_img is not None:
-            text, size = self.get_status_text(pil_img)
+            text, size = self._status_text.get_status_text(pil_img)
             Draw.status_text(
                 image=pil_img,
                 size=size,
@@ -321,7 +246,7 @@ class CameraProcessor:
         loop = get_event_loop()
 
         with concurrent.futures.ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix=f"{self._shared.file_name}_camera_text"
+            max_workers=1, thread_name_prefix=f"{self._file_name}_camera_text"
         ) as executor:
             tasks = [
                 loop.run_in_executor(
